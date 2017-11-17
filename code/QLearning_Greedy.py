@@ -230,4 +230,4 @@ def greedy(data):
 	return profit
 
 profit = greedy(data)
-print "Greedy yields profit", greedy(profit)
+print "Greedy yields profit", profit
