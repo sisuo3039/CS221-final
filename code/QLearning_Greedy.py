@@ -143,7 +143,7 @@ def Q_learn(data, weight, randomPolicy=True):
 
 	# if stock was never sold in the end, sell it
 	if amount_held == 1:
-		profit = curr_price - purchased_price
+		profit += curr_price - purchased_price
 	return profit
 
 weight = [0]*7
