@@ -149,6 +149,7 @@ def Q_learn(data, weight, randomPolicy=True):
 weight = [0]*7
 data = data_extract(sap)
 
+
 '''average_profit = 0
 for i in range(100):
 	profit = Q_learn(data, weight)
@@ -201,11 +202,6 @@ def oracle_linear_search(data):
 	return (optimal, profit)
 
 
-
-
-
-
-
 # greedy algorithm:
 # if bought: 
 #			sell when price rises
@@ -214,6 +210,8 @@ def oracle_linear_search(data):
 def greedy(data):
 	profit = 0
 	boughtPrice = 0
+	cash = 1000
+	shares = 0
 
 	for i in range(1,len(data)):
 		# data[i] in format (price, date, Open/close)
@@ -222,12 +220,18 @@ def greedy(data):
 			if data[i-1][0] < currPrice:
 				reward = currPrice - boughtPrice
 				profit += reward
+				cash = shares*currPrice
+				shares = 0
 				boughtPrice = 0
 		else: # not holding stock
 			if data[i-1][0] > currPrice:
 				boughtPrice = currPrice
+				shares = cash/currPrice
+				cash = 0
 
-	return profit
+	if shares != 0:
+		cash = shares*currPrice
+	return cash
 
 profit = greedy(data)
 print "Greedy yields profit", profit
