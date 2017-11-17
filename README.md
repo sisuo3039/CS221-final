@@ -1,4 +1,4 @@
 # CS221 project
 ## Sentiment classification status:
 ###     updated @ Nov 16, 2017 8:23PM PST
-###       723261 finished , from Wed Aug 02 2017 13:14:51 GMT+0000 (UTC) till now
+###       750602 finished , from Fri Jul 28 2017 00:48:40 GMT+0000 (UTC) till now
