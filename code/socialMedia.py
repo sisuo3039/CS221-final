@@ -85,6 +85,6 @@ class twitter:
 #
 #
 if __name__ == "__main__":
-    result=twitter('2016-10-01','2017-11-09').getAvgSentiment()
+    result=twitter('2017-06-01','2017-11-09').getAvgSentiment()
 
     print result
