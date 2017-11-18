@@ -12,27 +12,30 @@ model_size = 10
 ## load data
 sap_train = pdr.get_data_yahoo(symbols='SAP', start=datetime(2015, 1, 1), end=datetime(2017, 1, 1))
 # store Adj Close data into puredata list
-traindata = sap_train['Adj Close']
+# traindata = sap_train['Adj Close']
+traindata = np.concatenate((sap_train['Open'], sap_train['Adj Close']))
 
+print ("total length", len(traindata))
 sap_eval = pdr.get_data_yahoo(symbols='SAP', start=datetime(2017, 1, 1), end=datetime(2017, 10, 1))
 # store Adj Close data into puredata list
-evaldata = sap_eval['Adj Close']
+# evaldata = sap_eval['Adj Close']
+traindata = np.concatenate((sap_eval['Open'], sap_eval['Adj Close']))
 
-## starting money amount and stock amount
-cash = 1000.
-stock = 0.
-## baseline randomly buy or sell
-for i in range(len(traindata)):
-    # buy
-    if random.randint(1,3) == 1 and cash > 0:
-        stock = cash / traindata[i]
-        cash = 0
-    # sell
-    elif random.randint(1,3) == 2 and stock > 0:
-        cash += stock * traindata[i]
-        stock = 0
-    accountvalue = cash + stock * traindata[i]
-print "the total money after 2 years' random trading is", accountvalue
+# ## starting money amount and stock amount
+# cash = 1000.
+# stock = 0.
+# ## baseline randomly buy or sell
+# for i in range(len(traindata)):
+#     # buy
+#     if random.randint(1,3) == 1 and cash > 0:
+#         stock = cash / traindata[i]
+#         cash = 0
+#     # sell
+#     elif random.randint(1,3) == 2 and stock > 0:
+#         cash += stock * traindata[i]
+#         stock = 0
+#     accountvalue = cash + stock * traindata[i]
+# print "the total money after 2 years' random trading is", accountvalue
 
 
 ## process the data into training data x and label data y
