@@ -5,7 +5,8 @@ import random
 from random import randint
 from copy import deepcopy
 
-sap = pdr.get_data_yahoo(symbols='SAP', start=datetime(2015, 1, 1), end=datetime(2017, 10, 26))
+sap = pdr.get_data_yahoo(symbols='SAP', start=datetime(2015, 1, 1), end=datetime(2017, 10, 1))
+sap2 = pdr.get_data_yahoo(symbols='SAP', start=datetime(2017, 1, 1), end=datetime(2017, 10, 1))
 
 # extracts stock data
 def data_extract(stock):
@@ -55,7 +56,9 @@ def get_V_Opt(weight, feature, actions):
 	return (opt, action)
 
 # return the current reward for current action and state
-def get_reward(action, purchased_price, curr_price):
+def get_reward(feature, action):
+	purchased_price = feature[3]
+	curr_price = feature[1]
 	if action == "stay" or action=="buy":
 		return 0
 	elif action == "sell":
@@ -64,19 +67,43 @@ def get_reward(action, purchased_price, curr_price):
 # return possible actions given state
 # when we are holding stocks, then action is just "sell" and "stay"
 # "buy" and "stay" otherwise
-def get_action(amount_held):
+def get_action(feature):
+	amount_held = feature[0]
 	if amount_held == 1:
 		return ["sell", "stay"]
 	else:
 		return ["stay", "buy"]
 
+# returns initial state minus action
+def get_init_state(data):
+	return [0, data[1][0], data[0][0], 0]
+
+# given state, get next state
+def get_next_state(feature, index, data, action):
+	amount_held = feature[0]
+	curr_price = feature[1]
+	prev_price = feature[2]
+	purchased_price = feature[3]
+
+	if action == "buy":
+		purchased_price = curr_price
+		amount_held = 1
+	elif action == "sell":
+		purchased_price = 0
+		amount_held = 0
+
+	prev_price = curr_price
+	curr_price = data[index+1][0]
+	new_feature = [amount_held, curr_price, prev_price, purchased_price]
+
+	return new_feature
+	
 # input: 
 # data - data from stock using data_extract
 # weight - weight
 # boolean randomPolicy - if true then do random else follow exactly policy pi from weight
 # output:
 # total profit
-
 def Q_learn(data, weight, randomPolicy=True):
 	# profit
 	profit = 0
@@ -86,18 +113,12 @@ def Q_learn(data, weight, randomPolicy=True):
 	gamma = 1
 	epsilon = 0.2
 
-	#states
-	amount_held = 0
-	purchased_price = 0
-	curr_price = data[1][0]
-	prev_price = data[0][0]
+	#initial state
+	feature = get_init_state(data)
 
 	for i in range(2, len(data)-1):
 		# get possible actions using current feature
-		poss_action = get_action(amount_held)
-
-		# current feature minus action
-		feature = [amount_held, curr_price, prev_price, purchased_price]
+		poss_action = get_action(feature)
 
 		# select an action based on policy
 		if randomPolicy:
@@ -117,22 +138,13 @@ def Q_learn(data, weight, randomPolicy=True):
 		Q_opt = dot_product(feature_added_action, weight)
 
 		#reward for the current action
-		reward = get_reward(action, purchased_price, curr_price)
+		reward = get_reward(feature, action)
 
 		#total profit
 		profit += reward
 
-		#update states
-		if action == "buy":
-			purchased_price = curr_price
-			amount_held = 1
-		elif action == "sell":
-			purchased_price = 0
-			amount_held = 0
-
- 		prev_price = curr_price
-		curr_price = data[i+1][0]
-		new_feature = [amount_held, curr_price, prev_price, purchased_price]
+		# update state
+		new_feature = get_next_state(feature, i, data, action)
 
 		# Q learning
 		amount = (Q_opt-(reward+gamma*get_V_Opt(weight, new_feature, poss_action)[0]))
@@ -141,9 +153,11 @@ def Q_learn(data, weight, randomPolicy=True):
 		for i in range(len(weight)):
 			weight[i] = weight[i]-feature_added_action[i] 
 
+		feature = new_feature
+
 	# if stock was never sold in the end, sell it
-	if amount_held == 1:
-		profit += curr_price - purchased_price
+	if feature[0] == 1:
+		profit += feature[1] - feature[3]
 	return profit
 
 weight = [0]*7
@@ -156,7 +170,8 @@ for i in range(100):
 	average_profit += profit
 
 print "random policy average", average_profit/100
-	
+
+
 average_profit = 0
 for i in range(100):
 	profit = Q_learn(data, weight, False)
@@ -165,9 +180,10 @@ for i in range(100):
 print "Epsilon greedy policy average", average_profit/100
 '''
 
+
 #print Q_learn(data, weight)
 #print Q_learn(data, weight, False)
-print weight
+#print weight
 
 
 
@@ -233,5 +249,5 @@ def greedy(data):
 		cash = shares*currPrice
 	return cash
 
-profit = greedy(data)
-print "Greedy yields profit", profit
+#profit = greedy(data)
+#print "Greedy yields profit", profit
