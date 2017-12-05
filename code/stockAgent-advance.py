@@ -13,7 +13,25 @@ import pandas_datareader as pdr
 from keras.models import Sequential
 from keras.layers import *
 from keras.optimizers import *
+import tensorflow as tf
 
+#----------
+HUBER_LOSS_DELTA = 1.0
+LEARNING_RATE = 0.00025
+HUBER_LOSS_W=1
+
+#----------
+def huber_loss(y_true, y_pred):
+    err = y_true - y_pred
+
+    cond = K.abs(err) < HUBER_LOSS_DELTA
+    L2 = 0.5 * K.square(err)
+    L1 = HUBER_LOSS_DELTA * (K.abs(err) - 0.5 * HUBER_LOSS_DELTA)
+
+    loss = tf.where(cond, L2, L1)   # Keras does not cover where function in tensorflow :-(
+
+    return K.mean(loss)
+    # return tf.losses.huber_loss(y_true,y_pred,weights=HUBER_LOSS_W,delta=HUBER_LOSS_DELTA, reduction=None)
 
 class Brain:
     def __init__(self, stateCnt, actionCnt):
@@ -21,6 +39,7 @@ class Brain:
         self.actionCnt = actionCnt
 
         self.model = self._createModel()
+        self.model_ = self._createModel()
         # self.model.load_weights("cartpole-basic.h5")
 
     def _createModel(self):
@@ -38,6 +57,7 @@ class Brain:
         model.add(Dense(units=actionCnt, activation='linear'))
 
         opt = RMSprop(lr=0.00025)
+        # model.compile(loss='mse', optimizer=opt)
         model.compile(loss='mse', optimizer=opt)
 
         return model
@@ -45,12 +65,17 @@ class Brain:
     def train(self, x, y, epoch=1, verbose=0):
         self.model.fit(x, y, batch_size=64, epochs=epoch, verbose=verbose)
 
-    def predict(self, s):
-        return self.model.predict(s)
+    def predict(self, s, target=False):
+        if target:
+            return self.model_.predict(s)
+        else:
+            return self.model.predict(s)
 
     def predictOne(self, s):
         return self.predict(s.reshape(1, self.stateCnt)).flatten()
 
+    def updateTargetModel(self):
+        self.model_.set_weights(self.model.get_weights())
 
 # -------------------- MEMORY --------------------------
 class Memory:  # stored as ( s, a, r, s_ )
@@ -68,7 +93,8 @@ class Memory:  # stored as ( s, a, r, s_ )
     def sample(self, n):
         n = min(n, len(self.samples))
         return random.sample(self.samples, n)
-
+    def isFull(self):
+        return len(self.samples) >= self.capacity
 
 # -------------------- AGENT ---------------------------
 MEMORY_CAPACITY = 100000
@@ -79,6 +105,8 @@ GAMMA = 0.99
 MAX_EPSILON = 1
 MIN_EPSILON = 0.01
 LAMBDA = 0.001  # speed of decay
+
+UPDATE_TARGET_FREQUENCY = 1000
 
 
 class Agent:
@@ -100,7 +128,8 @@ class Agent:
 
     def observe(self, sample):  # in (s, a, r, s_) format
         self.memory.add(sample)
-
+        if self.steps % UPDATE_TARGET_FREQUENCY == 0:
+            self.brain.updateTargetModel()
         # slowly decrease Epsilon based on our eperience
         self.steps += 1
         self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * math.exp(-LAMBDA * self.steps)
@@ -115,16 +144,16 @@ class Agent:
         states_ = numpy.array([(no_state if o[3] is None else o[3]) for o in batch])
 
         p = agent.brain.predict(states)
-        p_ = agent.brain.predict(states_)
+        p_ = agent.brain.predict(states_,target=True)
 
         x = numpy.zeros((batchLen, self.stateCnt))
         y = numpy.zeros((batchLen, self.actionCnt))
 
         for i in range(batchLen):
             o = batch[i]
-            s = o[0];
-            a = o[1];
-            r = o[2];
+            s = o[0]
+            a = o[1]
+            r = o[2]
             s_ = o[3]
 
             t = p[i]
@@ -138,7 +167,20 @@ class Agent:
 
         self.brain.train(x, y)
 
+class RandomAgent:
 
+    def __init__(self, actionCnt):
+        self.actionCnt = actionCnt
+        self.memory = Memory(MEMORY_CAPACITY)
+
+    def act(self, s):
+        return random.randint(0, self.actionCnt - 1)
+
+    def observe(self, sample):  # in (s, a, r, s_) format
+        self.memory.add(sample)
+
+    def replay(self):
+        pass
 # -------------------- Stock paramter ---------------------
 class Stock:
     def __init__(self, investment,startdate,enddate,company):
@@ -195,7 +237,7 @@ class Stock:
             self.isCached=True
         return self.cacheStock[index]
 
-    def run(self, agent):
+    def run(self, agent,printout=False):
         s=[self.investment,0,self.closePrice(self.company,0)]
         s=numpy.array(s)
         reward = self.investment
@@ -223,7 +265,8 @@ class Stock:
 
                 break
             # print("step reward:", r)
-        print("Total reward:", reward)
+        if printout:
+            print("Total reward:", reward)
         MYLIST.append(reward)
 
 
@@ -255,14 +298,24 @@ actionCnt = 3  # sell, buy , hold
 
 
 agent = Agent(stateCnt, actionCnt)
+randomAgent = RandomAgent(actionCnt)
 count = 0
 try:
     if needrepaly:
+       print('use replay file%s'%(replayFile))
        agent.brain.model.load_weights(replayFile)
+
+    else:
+        print('use random agent to inital model')
+        while randomAgent.memory.isFull() == False:
+            stock.run(randomAgent)
+
+    agent.memory.samples = randomAgent.memory.samples
+    randomAgent = None
     while True:
         count += 1
         print("episode # %s" % (count))
-        stock.run(agent)
+        stock.run(agent,printout=True)
 
 finally:
     agent.brain.model.summary();
