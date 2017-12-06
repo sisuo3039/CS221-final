@@ -93,7 +93,7 @@ class Agent:
         self.memory = Memory(MEMORY_CAPACITY)
 
     def act(self, s):
-        if random.random() < self.epsilon:
+        if random.random() < self.epsilon and not needrepaly:
             return random.randint(0, self.actionCnt - 1)
         else:
             return numpy.argmax(self.brain.predictOne(s))
@@ -267,8 +267,8 @@ try:
 finally:
     agent.brain.model.summary();
 
-    agent.brain.model.save("stock_%s_episode%s_%s.h5"%(company,count,datetime.now().strftime('%Y-%m-%d')))
-    with open("stock_%s_episode%s_%s.csv"%(company,count,datetime.now().strftime('%Y-%m-%d')), 'wb') as myfile:
+    agent.brain.model.save("Q_BASIC_stock_%s_episode%s_%s.h5"%(company,count,datetime.now().strftime('%Y-%m-%d')))
+    with open("Q_BASIC_stock_%s_episode%s_%s.csv"%(company,count,datetime.now().strftime('%Y-%m-%d')), 'wb') as myfile:
         wr = csv.writer(myfile, delimiter="\n")
         wr.writerow(MYLIST)
 

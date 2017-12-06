@@ -6,7 +6,9 @@
 #
 # os.environ['THEANO_FLAGS'] = "device=cuda*,floatX=float32"
 
-import random, numpy, math,csv
+import random, numpy, math,csv,scipy
+from SumTree import SumTree
+
 from datetime import datetime ,timedelta
 import pandas_datareader as pdr
 # -------------------- BRAIN ---------------------------
@@ -17,7 +19,7 @@ from keras.optimizers import *
 
 # #----------
 # HUBER_LOSS_DELTA = 1.0
-# LEARNING_RATE = 0.00025
+
 # HUBER_LOSS_W=1
 #
 # #----------
@@ -56,7 +58,7 @@ class Brain:
         model.add(Dense(units=128, activation='relu', input_dim=64))
         model.add(Dense(units=actionCnt, activation='linear'))
 
-        opt = RMSprop(lr=0.00025)
+        opt = RMSprop(lr=LEARNING_RATE)
         # model.compile(loss='mse', optimizer=opt)
         model.compile(loss='mse', optimizer=opt)
 
@@ -80,24 +82,41 @@ class Brain:
 # -------------------- MEMORY --------------------------
 class Memory:  # stored as ( s, a, r, s_ )
     samples = []
+    e = 0.01
+    a = 0.6
 
     def __init__(self, capacity):
-        self.capacity = capacity
+        self.tree = SumTree(capacity)
 
-    def add(self, sample):
-        self.samples.append(sample)
+    def _getPriority(self, error):
+        return (error + self.e) ** self.a
 
-        if len(self.samples) > self.capacity:
-            self.samples.pop(0)
+    def add(self, error, sample):
+        p = self._getPriority(error)
+        self.tree.add(p, sample)
 
     def sample(self, n):
-        n = min(n, len(self.samples))
-        return random.sample(self.samples, n)
-    def isFull(self):
-        return len(self.samples) >= self.capacity
+        batch = []
+        segment = self.tree.total() / n
+
+        for i in range(n):
+            a = segment * i
+            b = segment * (i + 1)
+
+            s = random.uniform(a, b)
+            (idx, p, data) = self.tree.get(s)
+            batch.append((idx, data))
+
+        return batch
+
+    def update(self, idx, error):
+        p = self._getPriority(error)
+        self.tree.update(idx, p)
+    # def isFull(self):
+    #     return len(self.samples) >= self.capacity
 
 # -------------------- AGENT ---------------------------
-MEMORY_CAPACITY = 100000
+MEMORY_CAPACITY = 400000
 BATCH_SIZE = 64
 
 GAMMA = 0.99
@@ -118,57 +137,71 @@ class Agent:
         self.actionCnt = actionCnt
 
         self.brain = Brain(stateCnt, actionCnt)
-        self.memory = Memory(MEMORY_CAPACITY)
+        # self.memory = Memory(MEMORY_CAPACITY)
 
     def act(self, s):
-        if random.random() < self.epsilon and not needrepaly:
+        if (random.random() < self.epsilon) and not needrepaly:
             return random.randint(0, self.actionCnt - 1)
         else:
             return numpy.argmax(self.brain.predictOne(s))
 
     def observe(self, sample):  # in (s, a, r, s_) format
-        self.memory.add(sample)
+        x, y, errors = self._getTargets([(0, sample)])
+        self.memory.add(errors[0], sample)
+
         if self.steps % UPDATE_TARGET_FREQUENCY == 0:
             self.brain.updateTargetModel()
         # slowly decrease Epsilon based on our eperience
         self.steps += 1
         self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * math.exp(-LAMBDA * self.steps)
 
-    def replay(self):
-        batch = self.memory.sample(BATCH_SIZE)
-        batchLen = len(batch)
-
+    def _getTargets(self, batch):
         no_state = numpy.zeros(self.stateCnt)
-        # stored as ( s, a, r, s_ )
-        states = numpy.array([o[0] for o in batch])
-        states_ = numpy.array([(no_state if o[3] is None else o[3]) for o in batch])
+
+        states = numpy.array([o[1][0] for o in batch])
+        states_ = numpy.array([(no_state if o[1][3] is None else o[1][3]) for o in batch])
 
         p = agent.brain.predict(states)
-        p_ = agent.brain.predict(states_,target=True)
 
-        x = numpy.zeros((batchLen, self.stateCnt))
-        y = numpy.zeros((batchLen, self.actionCnt))
+        p_ = agent.brain.predict(states_, target=False)
+        pTarget_ = agent.brain.predict(states_, target=True)
 
-        for i in range(batchLen):
-            o = batch[i]
-            s = o[0]
-            a = o[1]
-            r = o[2]
+        x = numpy.zeros((len(batch), self.stateCnt))
+        y = numpy.zeros((len(batch), self.actionCnt))
+        errors = numpy.zeros(len(batch))
+
+        for i in range(len(batch)):
+            o = batch[i][1]
+            s = o[0];
+            a = o[1];
+            r = o[2];
             s_ = o[3]
 
             t = p[i]
+            oldVal = t[a]
             if s_ is None:
                 t[a] = r
             else:
-                t[a] = r + GAMMA * numpy.amax(p_[i])
+                t[a] = r + GAMMA * pTarget_[i][numpy.argmax(p_[i])]  # double DQN
 
             x[i] = s
             y[i] = t
+            errors[i] = abs(oldVal - t[a])
+
+        return (x, y, errors)
+    def replay(self):
+        batch = self.memory.sample(BATCH_SIZE)
+        x, y, errors = self._getTargets(batch)
+
+        # update errors
+        for i in range(len(batch)):
+            idx = batch[i][0]
+            self.memory.update(idx, errors[i])
 
         self.brain.train(x, y)
 
 class RandomAgent:
-
+    exp = 0
     def __init__(self, actionCnt):
         self.actionCnt = actionCnt
         self.memory = Memory(MEMORY_CAPACITY)
@@ -177,7 +210,9 @@ class RandomAgent:
         return random.randint(0, self.actionCnt - 1)
 
     def observe(self, sample):  # in (s, a, r, s_) format
-        self.memory.add(sample)
+        error = abs(sample[2])  # reward
+        self.memory.add(error, sample)
+        self.exp += 1
 
     def replay(self):
         pass
@@ -276,18 +311,19 @@ company = 'SAP'
 
 # enddate=datetime.now()
 
-startdate=datetime(2017,01,01)
+startdate=datetime(2016,1,1)
 
-enddate=datetime(2017,10,01)
+enddate=datetime(2017,1,1)
 # stop when you cash value is only 50% of your total cash
 
 STOP_INVERST_PREC=float(0.5)
 TRANSACTION_FEE=2
-
+LEARNING_RATE = 0.00025
 needrepaly=True
-replayFile='stock_SAP_episode2865_2017-12-04.h5'
+replayFile='stock_SAP_episode30955_2017-12-06.h5'
 initalInvestment=1000
 MYLIST=[]
+
 #___________________________________ above is control parameter ________________________
 
 stock = Stock(initalInvestment,startdate,enddate,company)
@@ -305,11 +341,11 @@ try:
        agent.brain.model.load_weights(replayFile)
 
     else:
-        print('use random agent to inital model')
-        while randomAgent.memory.isFull() == False:
+        while randomAgent.exp < MEMORY_CAPACITY:
             stock.run(randomAgent)
+        print('use random agent to initial model %s tims'%(randomAgent.exp))
 
-    agent.memory.samples = randomAgent.memory.samples
+    agent.memory = randomAgent.memory
     randomAgent = None
     while True:
         count += 1
@@ -320,7 +356,7 @@ finally:
     agent.brain.model.summary();
 
     agent.brain.model.save("stock_%s_episode%s_%s.h5"%(company,count,datetime.now().strftime('%Y-%m-%d')))
-    with open("stock_%s_episode%s_%s.csv"%(company,count,datetime.now().strftime('%Y-%m-%d')), 'wb') as myfile:
+    with open("advv2_stock_%s_episode%s_%s.csv"%(company,count,datetime.now().strftime('%Y-%m-%d')), 'wb') as myfile:
         wr = csv.writer(myfile, delimiter="\n")
         wr.writerow(MYLIST)
 
