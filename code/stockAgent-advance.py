@@ -98,7 +98,7 @@ class Memory:  # stored as ( s, a, r, s_ )
 
 # -------------------- AGENT ---------------------------
 MEMORY_CAPACITY = 100000
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 
 GAMMA = 0.99
 
@@ -106,7 +106,7 @@ MAX_EPSILON = 1
 MIN_EPSILON = 0.01
 LAMBDA = 0.001  # speed of decay
 
-UPDATE_TARGET_FREQUENCY = 1000
+UPDATE_TARGET_FREQUENCY = 100
 
 
 class Agent:
@@ -276,16 +276,16 @@ company = 'SAP'
 
 # enddate=datetime.now()
 
-startdate=datetime(2017,01,01)
+startdate=datetime(2016,01,01)
 
-enddate=datetime(2017,10,01)
+enddate=datetime(2017,1,01)
 # stop when you cash value is only 50% of your total cash
 
 STOP_INVERST_PREC=float(0.5)
 TRANSACTION_FEE=2
 
-needrepaly=True
-replayFile='stock_SAP_episode2865_2017-12-04.h5'
+needrepaly=False
+replayFile='stock_SAP_episode30955_2017-12-06.h5'
 initalInvestment=1000
 MYLIST=[]
 #___________________________________ above is control parameter ________________________
